@@ -74,29 +74,30 @@
         -webkit-text-fill-color: transparent;
       }
 
-      /* Siren Animation for Loading Bar */
-      @keyframes police-siren {
-        0% { background-position: 0% 50%; }
-        100% { background-position: 100% 50%; }
+      /* Walking Animation for Detective */
+      @keyframes walk-bounce {
+        0%, 100% { transform: translateY(0) rotate(0deg); }
+        50% { transform: translateY(-3px) rotate(2deg); }
       }
       
-      .siren-bar {
-        background: linear-gradient(90deg, 
-          #EF4444 0%, /* Red */
-          #EF4444 20%, 
-          #3B82F6 20%, /* Blue */
-          #3B82F6 40%, 
-          #EF4444 40%, 
-          #EF4444 60%, 
-          #3B82F6 60%, 
-          #3B82F6 80%, 
-          #EF4444 80%
-        );
-        background-size: 200% 100%;
-        animation: police-siren 1s linear infinite;
+      .animate-walk {
+        animation: walk-bounce 0.6s ease-in-out infinite;
+      }
+
+      /* Footprint Pattern Background */
+      .bg-footprints {
+        background-color: #FFFDF5;
+        background-image: url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M2 8c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2-2-.9-2-2zm10 4c0-1.1.9-2 2-2s2 .9 2 2-.9 2-2 2-2-.9-2-2z' fill='%23d6d3d1' fill-opacity='0.4' fill-rule='evenodd'/%3E%3C/svg%3E");
+      }
+
+      /* Smooth height transition utility */
+      .transition-max-height {
+        transition-property: max-height, opacity, padding;
+        transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        transition-duration: 500ms;
       }
     </style>
-  <script type="importmap">
+<script type="importmap">
 {
   "imports": {
     "react": "https://esm.sh/react@^19.2.3",

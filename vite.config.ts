@@ -3,17 +3,22 @@ import react from '@vitejs/plugin-react'
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
-  // Load env file based on `mode` in the current working directory.
-  // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
-  const env = loadEnv(mode, process.cwd(), '');
+  // Carrega as variáveis de ambiente baseadas no modo (development/production)
+  // O terceiro parâmetro '' garante que carregue TODAS as variáveis, não apenas as com prefixo VITE_
+  const env = loadEnv(mode, '.', '');
 
   return {
     plugins: [react()],
     define: {
-      // This ensures process.env.API_KEY works in the client-side code
-      // by replacing it with the string value at build time.
-      // We default to "" to ensure it is always a string, avoiding undefined reference errors.
-      'process.env.API_KEY': JSON.stringify(env.API_KEY || "")
+      // Substitui process.env.API_KEY pelo valor literal da string durante o build.
+      // Isso é CRÍTICO para Vercel/Netlify.
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || ""),
+      
+      // Polyfill simples para evitar "Uncaught ReferenceError: process is not defined"
+      // caso alguma biblioteca tente acessar process.env.NODE_ENV diretamente
+      'process.env': {
+        NODE_ENV: JSON.stringify(mode)
+      }
     }
   }
 })
