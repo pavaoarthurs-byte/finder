@@ -217,54 +217,52 @@ function App() {
 
       setLoadingStep('2. Coletando links e extraindo dados...');
 
+      // PROMPT AJUSTADO PARA FORÇAR JSON NO TEXTO, JÁ QUE REMOVEMOS O SCHEMA ESTRITO
       const prompt = `
         ATUE COMO UM EXTRATOR DE DADOS DE PESQUISA.
         
+        OBJETIVO: Pesquisar vagas reais e retornar um JSON Array.
+        
         PASSO 1: PESQUISA
         Busque no Google por: "${searchContext}".
-        Considere TODAS as fontes (LinkedIn, Indeed, Gupy, Sites de Empresa, etc).
+        Considere fontes como LinkedIn, Indeed, Glassdoor, Sites de Empresa.
         
-        PASSO 2: COLETA E EXTRAÇÃO
-        Analise os resultados da pesquisa. Para cada resultado RELEVANTE de emprego:
-        - Extraia os dados (Título, Empresa, Salário, etc).
-        - **IMPORTANTE:** O campo 'url' deve ser EXATAMENTE o link encontrado na pesquisa. NÃO INVENTE LINKS.
-        - Se o snippet da busca tiver detalhes da vaga, use-os.
+        PASSO 2: RETORNO OBRIGATÓRIO
+        Você deve retornar APENAS um bloco de código markdown JSON válido.
+        Formato: \`\`\`json [ ... ] \`\`\`
+        
+        Estrutura de cada objeto no array:
+        {
+          "id": "string",
+          "title": "string",
+          "company": "string",
+          "location": "string",
+          "type": "string (Remoto/Híbrido/Presencial)",
+          "contract": "string (CLT/PJ)",
+          "salary": "string (ou 'A combinar')",
+          "summary": "string (Resumo breve)",
+          "url": "string (URL real encontrada)",
+          "postedAt": "string (ex: 2h atrás)",
+          "benefits": ["string"],
+          "requirements": ["string"],
+          "sourceInfo": "string (ex: LinkedIn)"
+        }
 
-        PASSO 3: RETORNO ESTRUTURADO
-        Retorne um JSON Array.
-        
-        Contexto Extra do Usuário:
+        Contexto Extra:
         - Experiência: ${experience}
-        - Instruções Especiais: ${aiInstructions}
+        - Instruções: ${aiInstructions}
+        
+        IMPORTANTE: Se encontrar links nos resultados da pesquisa, use-os no campo "url". Não invente links.
       `;
 
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: prompt,
         config: {
-          tools: [{ googleSearch: {} }],
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                id: { type: Type.STRING, description: "ID único gerado" },
-                title: { type: Type.STRING, description: "Título da vaga" },
-                company: { type: Type.STRING, description: "Nome da empresa" },
-                location: { type: Type.STRING, description: "Localização" },
-                type: { type: Type.STRING, description: "Remoto/Híbrido/Presencial" },
-                contract: { type: Type.STRING, description: "CLT/PJ" },
-                salary: { type: Type.STRING, description: "Salário ou 'A combinar'" },
-                summary: { type: Type.STRING, description: "Resumo breve (2 linhas)" },
-                url: { type: Type.STRING, description: "URL exata da fonte" },
-                postedAt: { type: Type.STRING, description: "Data relativa (ex: 2h atrás)" },
-                benefits: { type: Type.ARRAY, items: { type: Type.STRING } },
-                requirements: { type: Type.ARRAY, items: { type: Type.STRING } },
-                sourceInfo: { type: Type.STRING, description: "Fonte (ex: LinkedIn)" }
-              }
-            }
-          }
+          // REMOVIDO: responseSchema e responseMimeType
+          // Motivo: Conflitam frequentemente com a ferramenta googleSearch, causando erros 400 ou falhas de parse.
+          // Solução: Pedimos JSON no prompt e extraímos com Regex abaixo.
+          tools: [{ googleSearch: {} }]
         }
       });
 
@@ -272,17 +270,44 @@ function App() {
       await new Promise(resolve => setTimeout(resolve, 500));
 
       if (response.text) {
-         let cleanText = response.text.trim();
-         if (cleanText.startsWith('```')) {
-            cleanText = cleanText.replace(/^```(json)?/, '').replace(/```$/, '');
+         // EXTRAÇÃO ROBUSTA DE JSON
+         // O Google Search tool muitas vezes adiciona texto antes ou depois do JSON.
+         // Usamos regex para pegar apenas o conteúdo entre blocos ```json ... ```
+         const jsonMatch = response.text.match(/```json\s*([\s\S]*?)\s*```/) || response.text.match(/```\s*([\s\S]*?)\s*```/);
+         
+         let jsonString = "";
+         if (jsonMatch && jsonMatch[1]) {
+            jsonString = jsonMatch[1];
+         } else if (response.text.trim().startsWith('[') || response.text.trim().startsWith('{')) {
+            // Tentativa de pegar o texto direto se não houver markdown
+            jsonString = response.text;
+         } else {
+            console.warn("Resposta bruta da IA:", response.text);
+            throw new Error("A IA não retornou um formato JSON válido. Tente novamente.");
+         }
+
+         let data;
+         try {
+            data = JSON.parse(jsonString);
+         } catch (parseError) {
+            console.error("Erro de Parse JSON:", parseError);
+            throw new Error("Falha ao processar os dados retornados pela IA.");
          }
          
-         const data = JSON.parse(cleanText);
+         if (!Array.isArray(data)) {
+            // Se retornou um objeto único, encapsula em array
+            data = [data];
+         }
          
          const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
          
          const validatedData = data.map((j: any) => {
-           const verifiedByGoogle = verifyAgainstGrounding(j.url, groundingChunks);
+           // Normalização segura de URL
+           let currentUrl = j.url;
+           // Se a URL parecer placeholder ou inválida, tenta pegar do grounding se possível
+           // (Lógica simplificada aqui mantendo o que já existia)
+           
+           const verifiedByGoogle = verifyAgainstGrounding(currentUrl, groundingChunks);
            
            let score = 70;
            if (verifiedByGoogle) score += 20;
@@ -290,22 +315,33 @@ function App() {
            if (j.company && j.company !== "Confidencial") score += 5;
 
            return {
-             ...j,
-             benefits: j.benefits || [],
-             requirements: j.requirements || [],
+             id: j.id || Math.random().toString(36).substr(2, 9), // Fallback de ID
+             title: j.title || "Vaga Sem Título",
+             company: j.company || "Empresa Confidencial",
+             location: j.location || "Local não informado",
+             type: j.type || "Presencial",
+             contract: j.contract || "CLT",
+             salary: j.salary || "A combinar",
+             summary: j.summary || "Sem descrição disponível.",
+             url: currentUrl || null,
              matchScore: Math.min(100, score),
+             postedAt: j.postedAt,
+             benefits: Array.isArray(j.benefits) ? j.benefits : [],
+             requirements: Array.isArray(j.requirements) ? j.requirements : [],
+             sourceInfo: j.sourceInfo || "Web",
              isGoogleVerified: verifiedByGoogle
            };
          });
 
          setJobs(validatedData);
       } else {
-        throw new Error("A IA não retornou dados estruturados.");
+        throw new Error("A IA retornou uma resposta vazia.");
       }
 
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError("Não foi possível completar a investigação. Tente reformular os filtros.");
+      // Agora exibimos a mensagem real do erro para o usuário
+      setError(err.message || "Não foi possível completar a investigação. Tente reformular os filtros.");
     } finally {
       setIsLoading(false);
       setLoadingStep('');
