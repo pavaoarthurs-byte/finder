@@ -193,6 +193,28 @@ function App() {
     });
   };
 
+  // --- FUNÇÃO AUXILIAR COM RETRY ---
+  const generateContentWithRetry = async (modelName: string, prompt: string, config: any, retries = 2) => {
+    for (let i = 0; i <= retries; i++) {
+      try {
+        return await ai.models.generateContent({
+          model: modelName,
+          contents: prompt,
+          config: config
+        });
+      } catch (err: any) {
+        // Se for o último retry ou não for erro de quota, lança o erro
+        const isQuotaError = err.message?.includes('429') || err.message?.includes('quota') || err.message?.includes('RESOURCE_EXHAUSTED');
+        if (i === retries || !isQuotaError) throw err;
+        
+        // Espera exponencial: 2s, 4s...
+        const delay = 2000 * Math.pow(2, i);
+        console.log(`Tentativa ${i + 1} falhou por cota. Aguardando ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  };
+
   // --- BUSCA ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -217,7 +239,7 @@ function App() {
 
       setLoadingStep('2. Coletando links e extraindo dados...');
 
-      // PROMPT AJUSTADO PARA FORÇAR JSON NO TEXTO, JÁ QUE REMOVEMOS O SCHEMA ESTRITO
+      // PROMPT OTIMIZADO PARA MENOR CONSUMO DE TOKENS
       const prompt = `
         ATUE COMO UM EXTRATOR DE DADOS DE PESQUISA.
         
@@ -225,9 +247,13 @@ function App() {
         
         PASSO 1: PESQUISA
         Busque no Google por: "${searchContext}".
-        Considere fontes como LinkedIn, Indeed, Glassdoor, Sites de Empresa.
         
-        PASSO 2: RETORNO OBRIGATÓRIO
+        PASSO 2: FILTRAGEM E RETORNO
+        Selecione APENAS as 15 MELHORES vagas encontradas.
+        Não traga resultados irrelevantes.
+        Mantenha os textos curtos e objetivos.
+        
+        PASSO 3: FORMATO OBRIGATÓRIO
         Você deve retornar APENAS um bloco de código markdown JSON válido.
         Formato: \`\`\`json [ ... ] \`\`\`
         
@@ -240,7 +266,7 @@ function App() {
           "type": "string (Remoto/Híbrido/Presencial)",
           "contract": "string (CLT/PJ)",
           "salary": "string (ou 'A combinar')",
-          "summary": "string (Resumo breve)",
+          "summary": "string (Max 20 palavras)",
           "url": "string (URL real encontrada)",
           "postedAt": "string (ex: 2h atrás)",
           "benefits": ["string"],
@@ -255,16 +281,14 @@ function App() {
         IMPORTANTE: Se encontrar links nos resultados da pesquisa, use-os no campo "url". Não invente links.
       `;
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompt,
-        config: {
-          // REMOVIDO: responseSchema e responseMimeType
-          // Motivo: Conflitam frequentemente com a ferramenta googleSearch, causando erros 400 ou falhas de parse.
-          // Solução: Pedimos JSON no prompt e extraímos com Regex abaixo.
+      // ALTERADO: Usando gemini-2.5-flash para melhor estabilidade de cota e função com retry
+      const response: any = await generateContentWithRetry(
+        'gemini-2.5-flash', 
+        prompt, 
+        {
           tools: [{ googleSearch: {} }]
         }
-      });
+      );
 
       setLoadingStep('3. Validando links (Cross-Check)...');
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -340,8 +364,34 @@ function App() {
 
     } catch (err: any) {
       console.error(err);
-      // Agora exibimos a mensagem real do erro para o usuário
-      setError(err.message || "Não foi possível completar a investigação. Tente reformular os filtros.");
+      
+      let finalErrorMessage = err.message || "Não foi possível completar a investigação. Tente reformular os filtros.";
+      
+      // Tratamento específico para erro 429 / Quota Excedida
+      if (finalErrorMessage.includes("429") || 
+          finalErrorMessage.includes("quota") || 
+          finalErrorMessage.includes("RESOURCE_EXHAUSTED")) {
+         finalErrorMessage = "⚠️ COTA DE USO EXCEDIDA (ERRO 429). O plano gratuito da IA tem limites de requisições por minuto. Por favor, aguarde 1 minuto e tente novamente.";
+      } 
+      // Tenta limpar mensagens JSON brutas
+      else if (finalErrorMessage.includes(`"error":`)) {
+          try {
+             const jsonPart = finalErrorMessage.substring(finalErrorMessage.indexOf('{'));
+             const parsed = JSON.parse(jsonPart);
+             if (parsed.error?.message) {
+                 // Se o erro interno for de quota, aplica a mensagem amigável também
+                 if (parsed.error.message.includes("quota") || parsed.error.code === 429) {
+                     finalErrorMessage = "⚠️ COTA DE USO EXCEDIDA (ERRO 429). Aguarde alguns instantes.";
+                 } else {
+                     finalErrorMessage = parsed.error.message;
+                 }
+             }
+          } catch {
+             // Mantém a mensagem original se falhar o parse
+          }
+      }
+
+      setError(finalErrorMessage);
     } finally {
       setIsLoading(false);
       setLoadingStep('');
@@ -626,12 +676,12 @@ function App() {
 
       {/* ÁREA DE RESULTADOS */}
       {error && (
-        <div className="mt-6 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 font-typewriter text-sm shadow-md animate-bounce" role="alert">
-          <p className="font-bold flex items-center gap-2">
+        <div className="mt-6 p-4 bg-red-100 border-l-4 border-red-500 text-red-700 font-typewriter text-sm shadow-md animate-in fade-in duration-300" role="alert">
+          <p className="font-bold flex items-center gap-2 mb-2">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
             ERRO NA BUSCA:
           </p>
-          <p className="ml-7">{error}</p>
+          <p className="ml-7 whitespace-pre-wrap leading-relaxed">{error}</p>
         </div>
       )}
 
