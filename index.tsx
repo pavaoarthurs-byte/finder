@@ -379,6 +379,10 @@ const JobCard = ({ job, isSaved, isExpanded, onToggleSave, onToggleExpand }: {
 
 // --- Main Application Component ---
 const App = () => {
+  // --- CHECK FOR API KEY ---
+  const apiKey = process.env.API_KEY;
+  const isApiKeyMissing = !apiKey || apiKey === "";
+
   // Initial states
   const [role, setRole] = useState('');
   const [location, setLocation] = useState('');
@@ -669,6 +673,9 @@ const App = () => {
     setCurrentPage(1); // Reset to first page on new search
 
     try {
+      if (isApiKeyMissing) {
+        throw new Error("API Key não configurada.");
+      }
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const dateInstruction = getDateRangeLabel(dateRange);
       
@@ -786,6 +793,37 @@ const App = () => {
       setSearchProgress(100); // Ensure complete
     }
   };
+
+  // --- API KEY MISSING BLOCKING SCREEN ---
+  if (isApiKeyMissing) {
+    return (
+      <div className="min-h-screen bg-stone-100 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white border-l-4 border-red-500 shadow-xl p-8 rounded-sm font-typewriter">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="bg-red-100 p-3 rounded-full">
+               <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-800 uppercase">Acesso Negado</h1>
+          </div>
+          <p className="text-gray-600 mb-6 leading-relaxed">
+            Parece que a chave de segurança <strong>(API_KEY)</strong> não foi encontrada. Sem ela, nossos detetives digitais não podem investigar as vagas.
+          </p>
+          <div className="bg-stone-50 p-4 border border-stone-200 text-sm mb-6 font-mono text-stone-600">
+            <p>1. Crie um arquivo <strong className="text-stone-800">.env</strong> na raiz do projeto.</p>
+            <p className="mt-2">2. Adicione sua chave:</p>
+            <code className="block mt-1 bg-stone-200 p-2 rounded text-blue-800">API_KEY=sua_chave_gemini_aqui</code>
+            <p className="mt-2">3. Se estiver no Vercel, adicione em <em>Settings > Environment Variables</em>.</p>
+          </div>
+          <button 
+             onClick={() => window.location.reload()}
+             className="w-full bg-blue-900 hover:bg-blue-800 text-white font-bold py-3 px-4 rounded-sm transition-colors uppercase tracking-widest"
+          >
+             Tentar Novamente
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen pb-20">
