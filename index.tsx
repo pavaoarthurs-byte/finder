@@ -37,6 +37,7 @@ interface IBGECity {
 
 function App() {
   // --- VERIFICAÇÃO DE CONFIGURAÇÃO (API KEY) ---
+  // Acessa a variável injetada pelo Vite no momento do build
   const apiKey = process.env.API_KEY;
   
   if (!apiKey || apiKey === "") {
@@ -60,7 +61,7 @@ function App() {
                <li>Clique em <strong>Environment Variables</strong>.</li>
                <li>Adicione Key: <code className="bg-stone-200 px-1 rounded text-red-600">API_KEY</code></li>
                <li>Adicione Value: <em>Sua chave Gemini (começa com AIza...)</em></li>
-               <li><strong>CRUCIAL:</strong> Vá na aba <strong>Deployments</strong> e clique nos três pontinhos do último deploy -> <strong>Redeploy</strong>.</li>
+               <li><strong>CRUCIAL:</strong> Vá na aba <strong>Deployments</strong> e clique nos três pontinhos do último deploy -&gt; <strong>Redeploy</strong>.</li>
              </ol>
            </div>
            
@@ -407,7 +408,7 @@ function App() {
               CAÇADOR DE VAGAS
             </h1>
             <p className="text-stone-500 font-typewriter mt-1 text-sm">
-              Busca -> Coleta -> Validação -> Exibição
+              Busca -&gt; Coleta -&gt; Validação -&gt; Exibição
             </p>
           </div>
           <div className="hidden md:block transform rotate-12 opacity-80">

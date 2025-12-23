@@ -14,11 +14,8 @@ export default defineConfig(({ mode }) => {
       // Isso é CRÍTICO para Vercel/Netlify.
       'process.env.API_KEY': JSON.stringify(env.API_KEY || ""),
       
-      // Polyfill simples para evitar "Uncaught ReferenceError: process is not defined"
-      // caso alguma biblioteca tente acessar process.env.NODE_ENV diretamente
-      'process.env': {
-        NODE_ENV: JSON.stringify(mode)
-      }
+      // Polyfill apenas para NODE_ENV, sem sobrescrever o objeto process.env inteiro
+      'process.env.NODE_ENV': JSON.stringify(mode)
     }
   }
 })
